@@ -8,6 +8,7 @@ const {
   closestSquareDims,
   buildWordDictionary,
   applyDictionary,
+  compressZstd,
 } = require("./utils");
 
 let rawData = fs.readFileSync("data/test.txt", "utf-8");
@@ -63,3 +64,13 @@ console.log(
   `Compression ratio: ${((payload.length / getFileSizeBytes("data/test.txt")) * 100).toFixed(2)}%`,
 );
 console.log(`Dictionary entries: ${Object.keys(dictionary).length}`);
+
+// optionally generate a zstd-compressed version of the payload
+if (process.argv.includes("--zstd")) {
+  compressZstd(payload)
+    .then((buf) => {
+      fs.writeFileSync("output/payload.zst", buf);
+      console.log(`ZSTD payload size: ${buf.length} bytes`);
+    })
+    .catch((err) => console.error("zstd compression failed", err));
+}
