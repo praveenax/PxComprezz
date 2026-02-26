@@ -1,7 +1,8 @@
 // decode.js
 const fs = require("fs");
 const { PNG } = require("pngjs");
-const { getFileSizeBytes, closestSquareDims } = require("./utils");
+const { getFileSizeBytes, restoreDictionary } = require("./utils");
+
 const png = PNG.sync.read(fs.readFileSync("output/out.png"));
 
 const bytes = [];
@@ -15,12 +16,24 @@ for (let p = 0; p < png.data.length; p += 4) {
 }
 
 const buf = Buffer.from(bytes);
-const dataLen = buf.readUInt32BE(0);
-const recovered = buf.subarray(4, 4 + dataLen);
+
+// Read dictionary length
+const dictionaryLen = buf.readUInt32BE(0);
+const dictionaryBuffer = buf.subarray(4, 4 + dictionaryLen);
+const dictionary = JSON.parse(dictionaryBuffer.toString("utf-8"));
+
+// Read compressed text
+const compressedText = buf.subarray(4 + dictionaryLen).toString("utf-8");
+
+// Restore original text using dictionary
+const recovered = restoreDictionary(compressedText, dictionary);
 
 fs.writeFileSync("outputData/recovered.txt", recovered);
 
-console.log(`Input size: ${getFileSizeBytes("output/out.png")} bytes`);
+console.log(`Input image size: ${getFileSizeBytes("output/out.png")} bytes`);
 console.log(
   `Output size: ${getFileSizeBytes("outputData/recovered.txt")} bytes`,
+);
+console.log(
+  `Decompression complete. Dictionary had ${Object.keys(dictionary).length} entries.`,
 );
