@@ -12,56 +12,68 @@ function closestSquareDims(payloadLength, bytesPerPixel = 3) {
   return { pixelsNeeded, width, height };
 }
 
-// Extract and count word frequencies
+// Extract and count word frequencies with case variants
 function countWords(text) {
   const wordRegex = /\b\w+\b/g;
   const words = text.match(wordRegex) || [];
   const frequency = {};
+  const variants = {};
 
   words.forEach((word) => {
     const lower = word.toLowerCase();
     frequency[lower] = (frequency[lower] || 0) + 1;
+    
+    // Track case variants
+    if (!variants[lower]) {
+      variants[lower] = new Set();
+    }
+    variants[lower].add(word);
   });
 
-  return frequency;
+  return { frequency, variants };
 }
 
-// Build dictionary mapping words to token IDs with better compression strategy
+// Build dictionary mapping words to token IDs with efficient case handling
 function buildWordDictionary(text, minFrequency = 2) {
-  const frequency = countWords(text);
+  const { frequency, variants } = countWords(text);
 
   // Calculate compression savings for each word
   const candidates = Object.entries(frequency)
     .filter(([word, count]) => count >= minFrequency && word.length > 2)
     .map(([word, count]) => {
-      // Savings = (original_length - token_length) * occurrences
-      // Token length uses variable encoding: 1 byte for IDs 0-127, 2 bytes for 128-16383, etc.
-      const tokenLength = 1; // Start with 1 byte tokens for best savings
+      const tokenLength = 1;
       const savings = (word.length - tokenLength) * count;
-      return { word, count, savings, tokenLength };
+      
+      // Find most common variant for this word
+      const variantArray = Array.from(variants[word]);
+      const mostCommon = variantArray.reduce((a, b) => a, variantArray[0]);
+      
+      return { word, count, savings, tokenLength, mostCommon };
     })
     .sort((a, b) => b.savings - a.savings);
 
   // Select words that provide positive savings
-  const profitableWords = candidates.filter((w) => w.savings > 0).slice(0, 256); // Limit to 256 tokens
+  const profitableWords = candidates.filter((w) => w.savings > 0).slice(0, 256);
 
   // Create dictionary with variable-length encoding
   const dictionary = {};
-  profitableWords.forEach(({ word }, index) => {
-    // Single byte tokens for better compression (0x80-0xFF reserved for control)
-    if (index < 128) {
-      dictionary[word] = String.fromCharCode(0x80 + index);
-    } else {
-      dictionary[word] = `\x7f${String.fromCharCode(index - 128)}`;
-    }
+  const wordToToken = {};
+  
+  profitableWords.forEach(({ word, mostCommon }, index) => {
+    const token = index < 128 
+      ? String.fromCharCode(0x80 + index) 
+      : `\x7f${String.fromCharCode(index - 128)}`;
+    
+    // Store most common variant
+    dictionary[token] = mostCommon;
+    wordToToken[word] = token;
   });
 
   // Apply dictionary to text
   let compressedText = text;
-  
-  // Apply replacements in order of savings (most beneficial first)
-  profitableWords.forEach(({ word }, index) => {
-    const token = dictionary[word];
+
+  profitableWords.forEach(({ word }) => {
+    const token = wordToToken[word];
     const regex = new RegExp(`\\b${word}\\b`, "gi");
     compressedText = compressedText.replace(regex, token);
   });
@@ -119,21 +131,43 @@ function decompressRunLengthEncoding(text) {
   return result;
 }
 
-// Restore original text using dictionary
+// Restore original text using dictionary with context-aware case restoration
 function restoreDictionary(compressedText, dictionary) {
   // Decompress run-length encoding first
   let decompressed = decompressRunLengthEncoding(compressedText);
 
-  // Create reverse mapping: token -> word
-  const reverseDict = {};
-  Object.entries(dictionary).forEach(([word, token]) => {
-    reverseDict[token] = word;
-  });
-
   // Replace tokens back with words
   let restored = decompressed;
-  Object.entries(reverseDict).forEach(([token, word]) => {
-    restored = restored.split(token).join(word);
+  
+  Object.entries(dictionary).forEach(([token, baseWord]) => {
+    let result = "";
+    let i = 0;
+    
+    while (i < restored.length) {
+      if (restored.substr(i, token.length) === token) {
+        // Found a token - apply context-aware casing
+        let replacement = baseWord;
+        
+        // Check if this token is at sentence start (after . ! ? or start of text)
+        let isSentenceStart = (i === 0) || 
+          (i >= 2 && /[.!?]\s/.test(restored.substr(i - 2, 2)));
+        
+        if (isSentenceStart) {
+          // Capitalize first letter
+          replacement = baseWord.charAt(0).toUpperCase() + baseWord.slice(1).toLowerCase();
+        } else {
+          // Use lowercase
+          replacement = baseWord.toLowerCase();
+        }
+        
+        result += replacement;
+        i += token.length;
+      } else {
+        result += restored[i];
+        i++;
+      }
+    }
+    restored = result;
   });
 
   return restored;
