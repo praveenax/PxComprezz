@@ -3,6 +3,7 @@
 /node/package-lock.json
 
 # build / output artifacts
+/node/data/
 /node/output/
 /node/outputData/
 /node/recovered.bin
