@@ -22,7 +22,7 @@ function countWords(text) {
   words.forEach((word) => {
     const lower = word.toLowerCase();
     frequency[lower] = (frequency[lower] || 0) + 1;
-    
+
     // Track case variants
     if (!variants[lower]) {
       variants[lower] = new Set();
@@ -43,11 +43,11 @@ function buildWordDictionary(text, minFrequency = 2) {
     .map(([word, count]) => {
       const tokenLength = 1;
       const savings = (word.length - tokenLength) * count;
-      
+
       // Find most common variant for this word
       const variantArray = Array.from(variants[word]);
       const mostCommon = variantArray.reduce((a, b) => a, variantArray[0]);
-      
+
       return { word, count, savings, tokenLength, mostCommon };
     })
     .sort((a, b) => b.savings - a.savings);
@@ -58,12 +58,13 @@ function buildWordDictionary(text, minFrequency = 2) {
   // Create dictionary with variable-length encoding
   const dictionary = {};
   const wordToToken = {};
-  
+
   profitableWords.forEach(({ word, mostCommon }, index) => {
-    const token = index < 128 
-      ? String.fromCharCode(0x80 + index) 
-      : `\x7f${String.fromCharCode(index - 128)}`;
-    
+    const token =
+      index < 128
+        ? String.fromCharCode(0x80 + index)
+        : `\x7f${String.fromCharCode(index - 128)}`;
+
     // Store most common variant
     dictionary[token] = mostCommon;
     wordToToken[word] = token;
@@ -138,28 +139,29 @@ function restoreDictionary(compressedText, dictionary) {
 
   // Replace tokens back with words
   let restored = decompressed;
-  
+
   Object.entries(dictionary).forEach(([token, baseWord]) => {
     let result = "";
     let i = 0;
-    
+
     while (i < restored.length) {
       if (restored.substr(i, token.length) === token) {
         // Found a token - apply context-aware casing
         let replacement = baseWord;
-        
+
         // Check if this token is at sentence start (after . ! ? or start of text)
-        let isSentenceStart = (i === 0) || 
-          (i >= 2 && /[.!?]\s/.test(restored.substr(i - 2, 2)));
-        
+        let isSentenceStart =
+          i === 0 || (i >= 2 && /[.!?]\s/.test(restored.substr(i - 2, 2)));
+
         if (isSentenceStart) {
           // Capitalize first letter
-          replacement = baseWord.charAt(0).toUpperCase() + baseWord.slice(1).toLowerCase();
+          replacement =
+            baseWord.charAt(0).toUpperCase() + baseWord.slice(1).toLowerCase();
         } else {
           // Use lowercase
           replacement = baseWord.toLowerCase();
         }
-        
+
         result += replacement;
         i += token.length;
       } else {
