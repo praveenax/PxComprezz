@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "main": "run.js",
   "scripts": {
+    "encode": "node encode.js",
+    "encode:zstd": "node encode.js --zstd",
+    "zstd": "node zstd-compress.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "node-zstandard": "^1.2.4",
     "pngjs": "^7.0.0"
   }
 }
