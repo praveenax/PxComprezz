@@ -53,7 +53,9 @@ function buildWordDictionary(text, minFrequency = 2) {
     .sort((a, b) => b.savings - a.savings);
 
   // Select words that provide positive savings
-  const profitableWords = candidates.filter((w) => w.savings > 0).slice(0, 256);
+  const profitableWords = candidates
+    .filter((w) => w.savings > 0)
+    .slice(0, 2560);
 
   // Create dictionary with variable-length encoding
   const dictionary = {};
@@ -175,6 +177,63 @@ function restoreDictionary(compressedText, dictionary) {
   return restored;
 }
 
+// Zstd helpers (require lazily so module load doesn't fail if package missing)
+let zstd;
+function requireZstd() {
+  if (!zstd) {
+    try {
+      zstd = require("node-zstandard");
+    } catch (e) {
+      throw new Error("node-zstandard is not installed");
+    }
+  }
+  return zstd;
+}
+
+function compressZstd(buffer, level = 3) {
+  const z = requireZstd();
+  const tmp = require("os").tmpdir();
+  const path = require("path");
+  const inFile = path.join(tmp, `pxc_in_${Date.now()}.tmp`);
+  const outFile = path.join(tmp, `pxc_out_${Date.now()}.zst`);
+  fs.writeFileSync(inFile, buffer);
+  return new Promise((resolve, reject) => {
+    z.compress(inFile, outFile, level, (err) => {
+      if (err) return reject(err);
+      const data = fs.readFileSync(outFile);
+      try {
+        fs.unlinkSync(inFile);
+      } catch {}
+      try {
+        fs.unlinkSync(outFile);
+      } catch {}
+      resolve(data);
+    });
+  });
+}
+
+function decompressZstd(buffer) {
+  const z = requireZstd();
+  const tmp = require("os").tmpdir();
+  const path = require("path");
+  const inFile = path.join(tmp, `pxc_in_${Date.now()}.zst`);
+  const outFile = path.join(tmp, `pxc_out_${Date.now()}.tmp`);
+  fs.writeFileSync(inFile, buffer);
+  return new Promise((resolve, reject) => {
+    z.decompress(inFile, outFile, (err) => {
+      if (err) return reject(err);
+      const data = fs.readFileSync(outFile);
+      try {
+        fs.unlinkSync(inFile);
+      } catch {}
+      try {
+        fs.unlinkSync(outFile);
+      } catch {}
+      resolve(data);
+    });
+  });
+}
+
 module.exports = {
   getFileSizeBytes,
   closestSquareDims,
@@ -183,4 +242,6 @@ module.exports = {
   restoreDictionary,
   applyRunLengthEncoding,
   decompressRunLengthEncoding,
+  compressZstd,
+  decompressZstd,
 };
